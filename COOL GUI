@@ -1,128 +1,174 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local lockedTarget = nil -- Stores the current locked-on target
+-- GUI Setup
+local ScreenGui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 250, 0, 150) 
+Frame.Position = UDim2.new(0.5, -125, 0.2, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.Active = true
+Frame.Draggable = true
 
--- GUI Setup for Red Circle
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "Cool Panel"  -- Rename GUI to "Cool Panel"
-screenGui.Parent = player:FindFirstChildOfClass("PlayerGui")
+local TitleLabel = Instance.new("TextLabel", Frame)
+TitleLabel.Size = UDim2.new(0, 230, 0, 20)
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.Text = "Ability Menu"
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextScaled = true
 
-local circle = Instance.new("ImageLabel")
-circle.Parent = screenGui
-circle.BackgroundTransparency = 1
-circle.Image = "rbxassetid://6868450920" -- Red circle outline image
-circle.Size = UDim2.new(0, 100, 0, 100)
-circle.Position = UDim2.new(0.5, -50, 0.5, -50)
-circle.ImageColor3 = Color3.fromRGB(255, 0, 0)
-circle.ImageTransparency = 0
+local ToggleAimBot = Instance.new("TextButton", Frame)
+ToggleAimBot.Size = UDim2.new(0, 230, 0, 40)
+ToggleAimBot.Position = UDim2.new(0, 10, 0, 30)
+ToggleAimBot.Text = "AimBot: OFF"
+ToggleAimBot.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+ToggleAimBot.TextColor3 = Color3.fromRGB(255, 255, 255)
 
--- Function to find the nearest player
-local function getNearestPlayer()
-    local closestPlayer = nil
-    local shortestDistance = math.huge
-    local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+local ToggleCircle = Instance.new("TextButton", Frame)
+ToggleCircle.Size = UDim2.new(0, 230, 0, 40)
+ToggleCircle.Position = UDim2.new(0, 10, 0, 80)
+ToggleCircle.Text = "Circle: OFF"
+ToggleCircle.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+ToggleCircle.TextColor3 = Color3.fromRGB(255, 255, 255)
 
-    if not myHRP then return nil end
+local ToggleNoClip = Instance.new("TextButton", Frame)
+ToggleNoClip.Size = UDim2.new(0, 230, 0, 40)
+ToggleNoClip.Position = UDim2.new(0, 10, 0, 130)
+ToggleNoClip.Text = "Noclip: OFF"
+ToggleNoClip.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+ToggleNoClip.TextColor3 = Color3.fromRGB(255, 255, 255)
 
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local theirHRP = otherPlayer.Character.HumanoidRootPart
-            local distance = (myHRP.Position - theirHRP.Position).Magnitude
-            if distance < shortestDistance then
-                shortestDistance = distance
-                closestPlayer = theirHRP
+local MinimizeButton = Instance.new("TextButton", Frame)
+MinimizeButton.Size = UDim2.new(0, 50, 0, 20)
+MinimizeButton.Position = UDim2.new(1, -60, 0, 5)
+MinimizeButton.Text = "_"
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- Variables
+local aimAssistEnabled = false
+local circleVisible = false
+local minimized = false
+local noclipEnabled = false
+local target = nil
+
+-- Function to find nearest target
+local function getNearestTarget()
+    local myChar = LocalPlayer.Character
+    if not myChar then return end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+    
+    local closest, dist = nil, math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local mag = (myHRP.Position - hrp.Position).Magnitude
+                if mag < dist then
+                    dist = mag
+                    closest = player.Character
+                end
             end
         end
     end
-    return closestPlayer
+    return closest
 end
 
--- Function to check if locked target is still valid
-local function isLockedTargetValid()
-    return lockedTarget and lockedTarget.Parent and lockedTarget:FindFirstChild("Humanoid") and lockedTarget.Humanoid.Health > 0
-end
-
--- Function to create ESP outline for a player
-local function createESP(targetPlayer)
-    if not targetPlayer.Character then return end
-    local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    if hrp:FindFirstChild("ESP") then return end -- Prevent duplicates
-
-    -- Create BillboardGui
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "ESP"
-    billboard.Adornee = hrp
-    billboard.Size = UDim2.new(4, 0, 6, 0)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-
-    -- Create Frame (Outline)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundTransparency = 1
-
-    -- Borders for ESP
-    local borderSize = 2 
-    for _, side in ipairs({"Top", "Bottom", "Left", "Right"}) do
-        local border = Instance.new("Frame")
-        border.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-        border.BorderSizePixel = 0
-
-        if side == "Top" then
-            border.Size = UDim2.new(1, 0, 0, borderSize)
-            border.Position = UDim2.new(0, 0, 0, 0)
-        elseif side == "Bottom" then
-            border.Size = UDim2.new(1, 0, 0, borderSize)
-            border.Position = UDim2.new(0, 0, 1, -borderSize)
-        elseif side == "Left" then
-            border.Size = UDim2.new(0, borderSize, 1, 0)
-            border.Position = UDim2.new(0, 0, 0, 0)
-        elseif side == "Right" then
-            border.Size = UDim2.new(0, borderSize, 1, 0)
-            border.Position = UDim2.new(1, -borderSize, 0, 0)
-        end
-
-        border.Parent = frame
-    end
-
-    frame.Parent = billboard
-    billboard.Parent = hrp
-
-    -- Keep ESP consistent regardless of distance
-    RunService.RenderStepped:Connect(function()
-        if billboard.Parent then
-            local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-            billboard.Size = UDim2.new(4 / distance, 0, 6 / distance, 0)
-        end
-    end)
-end
-
--- Function to update ESP for all players
-local function updateESP()
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player then
-            createESP(otherPlayer)
+-- Noclip Function
+local function setNoClipState(enabled)
+    local myChar = LocalPlayer.Character
+    if not myChar then return end
+    
+    local humanoid = myChar:FindFirstChild("Humanoid")
+    local parts = myChar:GetChildren()
+    
+    for _, part in ipairs(parts) do
+        if part:IsA("BasePart") then
+            part.CanCollide = not enabled
         end
     end
 end
 
--- Main loop to update camera and ESP
-RunService.RenderStepped:Connect(function()
-    -- If we have a locked target and it's still alive, keep tracking it
-    if isLockedTargetValid() then
-        camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.Position)
-    else
-        -- Find a new target only if there's no valid locked target
-        local nearestPlayer = getNearestPlayer()
-        if nearestPlayer then
-            lockedTarget = nearestPlayer
-        end
-    end
-
-    updateESP()
+-- Noclip Toggle
+ToggleNoClip.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    ToggleNoClip.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+    ToggleNoClip.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    
+    -- Set Noclip State
+    setNoClipState(noclipEnabled)
 end)
+
+-- Aim Assist Loop
+RunService.RenderStepped:Connect(function()
+    if aimAssistEnabled then
+        if not target or not target:FindFirstChild("Humanoid") or target.Humanoid.Health <= 0 then
+            target = getNearestTarget()
+        end
+        if target then
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.HumanoidRootPart.Position)
+        end
+    end
+
+    -- Follow Crosshair with Red Circle if enabled
+    if circleVisible then
+        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        local circlePosition = screenCenter - Vector2.new(50, 50) -- Offset for circle to be centered
+        Circle.Position = UDim2.new(0, circlePosition.X, 0, circlePosition.Y)
+    end
+end)
+
+-- Create Red Circle
+local Circle = Instance.new("Frame", ScreenGui)
+Circle.Size = UDim2.new(0, 100, 0, 100)
+Circle.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+Circle.BorderSizePixel = 3
+Circle.AnchorPoint = Vector2.new(0.5, 0.5)
+Circle.Visible = false
+
+-- Toggle AimBot
+ToggleAimBot.MouseButton1Click:Connect(function()
+    aimAssistEnabled = not aimAssistEnabled
+    ToggleAimBot.Text = aimAssistEnabled and "AimBot: ON" or "AimBot: OFF"
+    ToggleAimBot.BackgroundColor3 = aimAssistEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end)
+
+-- Toggle Circle
+ToggleCircle.MouseButton1Click:Connect(function()
+    circleVisible = not circleVisible
+    Circle.Visible = circleVisible
+    ToggleCircle.Text = circleVisible and "Circle: ON" or "Circle: OFF"
+    ToggleCircle.BackgroundColor3 = circleVisible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end)
+
+-- Minimize Button
+MinimizeButton.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Frame.Size = minimized and UDim2.new(0, 250, 0, 30) or UDim2.new(0, 250, 0, 150)
+    ToggleAimBot.Visible = not minimized
+    ToggleCircle.Visible = not minimized
+    ToggleNoClip.Visible = not minimized
+end)
+
+-- Apply highlighting to all players with always-visible red outline (ESP)
+local function highlightPlayer(char)
+    if not char:FindFirstChild("Highlight") then
+        local highlight = Instance.new("Highlight", char)
+        highlight.FillTransparency = 1
+        highlight.OutlineColor = Color3.fromRGB(255, 0, 0) -- Red outline
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Make sure it stays on top and visible from all angles
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(highlightPlayer)
+end)
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character then highlightPlayer(player.Character) end
+end
