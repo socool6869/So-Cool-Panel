@@ -1,0 +1,128 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local lockedTarget = nil -- Stores the current locked-on target
+
+-- GUI Setup for Red Circle
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "Cool Panel"  -- Rename GUI to "Cool Panel"
+screenGui.Parent = player:FindFirstChildOfClass("PlayerGui")
+
+local circle = Instance.new("ImageLabel")
+circle.Parent = screenGui
+circle.BackgroundTransparency = 1
+circle.Image = "rbxassetid://6868450920" -- Red circle outline image
+circle.Size = UDim2.new(0, 100, 0, 100)
+circle.Position = UDim2.new(0.5, -50, 0.5, -50)
+circle.ImageColor3 = Color3.fromRGB(255, 0, 0)
+circle.ImageTransparency = 0
+
+-- Function to find the nearest player
+local function getNearestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+
+    if not myHRP then return nil end
+
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local theirHRP = otherPlayer.Character.HumanoidRootPart
+            local distance = (myHRP.Position - theirHRP.Position).Magnitude
+            if distance < shortestDistance then
+                shortestDistance = distance
+                closestPlayer = theirHRP
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- Function to check if locked target is still valid
+local function isLockedTargetValid()
+    return lockedTarget and lockedTarget.Parent and lockedTarget:FindFirstChild("Humanoid") and lockedTarget.Humanoid.Health > 0
+end
+
+-- Function to create ESP outline for a player
+local function createESP(targetPlayer)
+    if not targetPlayer.Character then return end
+    local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    if hrp:FindFirstChild("ESP") then return end -- Prevent duplicates
+
+    -- Create BillboardGui
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP"
+    billboard.Adornee = hrp
+    billboard.Size = UDim2.new(4, 0, 6, 0)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+
+    -- Create Frame (Outline)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+
+    -- Borders for ESP
+    local borderSize = 2 
+    for _, side in ipairs({"Top", "Bottom", "Left", "Right"}) do
+        local border = Instance.new("Frame")
+        border.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        border.BorderSizePixel = 0
+
+        if side == "Top" then
+            border.Size = UDim2.new(1, 0, 0, borderSize)
+            border.Position = UDim2.new(0, 0, 0, 0)
+        elseif side == "Bottom" then
+            border.Size = UDim2.new(1, 0, 0, borderSize)
+            border.Position = UDim2.new(0, 0, 1, -borderSize)
+        elseif side == "Left" then
+            border.Size = UDim2.new(0, borderSize, 1, 0)
+            border.Position = UDim2.new(0, 0, 0, 0)
+        elseif side == "Right" then
+            border.Size = UDim2.new(0, borderSize, 1, 0)
+            border.Position = UDim2.new(1, -borderSize, 0, 0)
+        end
+
+        border.Parent = frame
+    end
+
+    frame.Parent = billboard
+    billboard.Parent = hrp
+
+    -- Keep ESP consistent regardless of distance
+    RunService.RenderStepped:Connect(function()
+        if billboard.Parent then
+            local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+            billboard.Size = UDim2.new(4 / distance, 0, 6 / distance, 0)
+        end
+    end)
+end
+
+-- Function to update ESP for all players
+local function updateESP()
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player then
+            createESP(otherPlayer)
+        end
+    end
+end
+
+-- Main loop to update camera and ESP
+RunService.RenderStepped:Connect(function()
+    -- If we have a locked target and it's still alive, keep tracking it
+    if isLockedTargetValid() then
+        camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.Position)
+    else
+        -- Find a new target only if there's no valid locked target
+        local nearestPlayer = getNearestPlayer()
+        if nearestPlayer then
+            lockedTarget = nearestPlayer
+        end
+    end
+
+    updateESP()
+end)
